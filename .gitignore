@@ -192,3 +192,14 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+# VSCode
+.vscode/
+
+# Database
+*.db
+*.sqlite3
+*users.json
+
+# Key
+*.key
