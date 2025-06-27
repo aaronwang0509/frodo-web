@@ -16,9 +16,9 @@ UVICORN_MODE = settings.UVICORN_MODE
 FRONTEND_BUILD_DIR = settings.FRONTEND_BUILD_DIR
 FRONTEND_ORIGIN = settings.FRONTEND_ORIGIN
 
-app = FastAPI()
-
 run_all()
+
+app = FastAPI()
 
 # Mount routers first
 app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
