@@ -3,13 +3,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from models import db_models, user_models
 from sqlmodel import Session, select
 from core import db, security
-from .utils import require_admin
+from core.security import require_admin
 
 router = APIRouter()
 
 @router.get("/users", response_model=list[user_models.UserProfileOut])
 def list_users(
-    admin: db_models.IdentityUser = Depends(require_admin),
+    admin: db_models.UserProfile = Depends(require_admin),
     session: Session = Depends(db.get_session)
 ):
     return session.exec(select(db_models.UserProfile)).all()
@@ -17,7 +17,7 @@ def list_users(
 @router.post("/users", response_model=user_models.UserProfileOut)
 def provision_user(
     req: user_models.UserProvisioningRequest,
-    admin: db_models.IdentityUser = Depends(require_admin),
+    admin: db_models.UserProfile = Depends(require_admin),
     session: Session = Depends(db.get_session)
 ):
     # Check if IdentityUser exists
@@ -55,7 +55,7 @@ def provision_user(
 def update_user_profile(
     user_id: int,
     payload: user_models.UserProfileUpdate,
-    admin: db_models.IdentityUser = Depends(require_admin),
+    admin: db_models.UserProfile = Depends(require_admin),
     session: Session = Depends(db.get_session)
 ):
     profile = session.exec(
@@ -78,7 +78,7 @@ def update_user_profile(
 @router.delete("/users/{user_id}", response_model=dict)
 def delete_user(
     user_id: int,
-    admin: db_models.IdentityUser = Depends(require_admin),
+    admin: db_models.UserProfile = Depends(require_admin),
     session: Session = Depends(db.get_session)
 ):
     # Fetch both IdentityUser and UserProfile

@@ -1,10 +1,16 @@
 # core/security.py
 import os
 from datetime import datetime, timedelta, UTC
-from jose import jwt, JWTError
+
+from fastapi import Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
+from jose import jwt, JWTError
 from cryptography.fernet import Fernet
+from sqlmodel import Session, select
+
 from core.settings import settings
+from core import db
+from models import db_models
 
 # export environment variables
 TOKEN_ALGORITHM = settings.TOKEN_ALGORITHM
@@ -64,3 +70,52 @@ def decode_access_token(token: str):
 
 def decode_refresh_token(token: str):
     return decode_token(token, REFRESH_TOKEN_SECRET_KEY)
+
+def get_current_user(token: str = Depends(oauth2_scheme), session: Session = Depends(db.get_session)):
+    try:
+        payload = decode_access_token(token)
+        subject = payload.get("sub")
+        issuer = payload.get("iss", "local-idp")
+
+        if not subject:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    identity_user = session.exec(
+        select(db_models.IdentityUser).where(
+            (db_models.IdentityUser.subject == subject) &
+            (db_models.IdentityUser.issuer == issuer)
+        )
+    ).first()
+
+    if not identity_user:
+        identity_user = db_models.IdentityUser(subject=subject, issuer=issuer)
+        session.add(identity_user)
+        session.commit()
+        session.refresh(identity_user)
+
+    profile = session.exec(
+        select(db_models.UserProfile).where(db_models.UserProfile.user_id == identity_user.id)
+    ).first()
+
+    if not profile:
+        profile = db_models.UserProfile(
+            user_id=identity_user.id,
+            username=subject,
+            is_active=True,
+            role="user"
+        )
+        session.add(profile)
+        session.commit()
+        session.refresh(profile)
+
+    if not profile.is_active:
+        raise HTTPException(status_code=403, detail="User is inactive")
+
+    return profile
+
+def require_admin(user: db_models.UserProfile = Depends(get_current_user)):
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user

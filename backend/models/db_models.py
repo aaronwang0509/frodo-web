@@ -2,6 +2,7 @@
 from sqlmodel import SQLModel, Field, Relationship, UniqueConstraint
 from typing import Optional, List
 from datetime import datetime, UTC
+from sqlalchemy import Column, JSON
 
 class IdentityUser(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -24,6 +25,7 @@ class UserProfile(SQLModel, table=True):
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     user: Optional[IdentityUser] = Relationship(back_populates="profile")
+    environments: List["Environment"] = Relationship(back_populates="user_profile")
 
 # class LDAPConnection(SQLModel, table=True):
 #     id: Optional[int] = Field(default=None, primary_key=True)
@@ -36,3 +38,18 @@ class UserProfile(SQLModel, table=True):
 #     use_ssl: bool
 
 #     user: Optional[IdentityUser] = Relationship(back_populates="connections")
+
+class Environment(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(index=True)
+    frodo: Optional[str] = None
+    platformUrl: str
+    serviceAccountID: str
+    serviceAccountJWK: dict = Field(sa_column=Column(JSON))
+    expSeconds: int = 899
+    scope: str
+    proxy: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    user_profile_id: int = Field(foreign_key="userprofile.id")
+    user_profile: Optional[UserProfile] = Relationship(back_populates="environments")
