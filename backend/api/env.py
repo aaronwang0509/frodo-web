@@ -5,6 +5,9 @@ from core import db
 from core.security import get_current_user
 from models import db_models
 from models.env_models import EnvironmentCreate, EnvironmentUpdate
+from core.logger import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter()
 
@@ -46,6 +49,7 @@ def create_env(
     session.add(env)
     session.commit()
     session.refresh(env)
+    logger.info(f"Environment '{payload.name}' created for user_id={current_user.id}")
     return env
 
 @router.get("/{env_name}", response_model=db_models.Environment)
@@ -93,6 +97,7 @@ def update_env(
     session.add(env)
     session.commit()
     session.refresh(env)
+    logger.info(f"Environment '{env_name}' updated for user_id={current_user.id}")
     return env
 
 @router.delete("/{env_name}", response_model=dict)
@@ -115,4 +120,5 @@ def delete_env(
 
     session.delete(env)
     session.commit()
+    logger.info(f"Environment '{env_name}' deleted for user_id={current_user.id}")
     return {"detail": "Environment deleted successfully."}

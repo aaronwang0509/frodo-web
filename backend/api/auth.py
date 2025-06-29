@@ -3,9 +3,11 @@ from fastapi import APIRouter, HTTPException, Depends, Body
 from passlib.context import CryptContext
 from models.user_models import UserRegister, UserLogin, Token, TokenRefreshRequest
 from core import db, security
-from core.logger import logger
 from sqlmodel import Session, select
 from models import db_models
+from core.logger import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")

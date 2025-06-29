@@ -1,5 +1,7 @@
 # main.py
 import os
+import uuid
+import logging
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.requests import Request
@@ -7,9 +9,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi import HTTPException
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import FileResponse
-from api import auth, business, admin, env
+from api import auth, business, admin, env, token
 from core.init import run_all
 from core.settings import settings
+from core.logger import request_id_ctx_var
 
 # export environment variables
 UVICORN_MODE = settings.UVICORN_MODE
@@ -25,6 +28,7 @@ app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 # app.include_router(business.router, prefix="/api", tags=["Business APIs"])
 app.include_router(admin.router, prefix="/admin", tags=["Admin APIs"])
 app.include_router(env.router, prefix="/env", tags=["Environment APIs"])
+app.include_router(token.router, prefix="/token", tags=["Token"])
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -32,6 +36,16 @@ async def global_exception_handler(request: Request, exc: Exception):
         status_code=500,
         content={"detail": "Internal Server Error"}
     )
+
+@app.middleware("http")
+async def add_request_id(request: Request, call_next):
+    request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+    request_id_ctx_var.set(request_id)
+    request.state.request_id = request_id
+
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
+    return response
 
 # Check environment mode
 # if UVICORN_MODE == "production":

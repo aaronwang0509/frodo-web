@@ -133,6 +133,7 @@ celerybeat.pid
 # Environments
 .env
 .venv
+envs.json
 env/
 venv/
 ENV/
@@ -206,3 +207,7 @@ cython_debug/
 
 # Key
 *.key
+
+# logs
+logs/
+*.log
