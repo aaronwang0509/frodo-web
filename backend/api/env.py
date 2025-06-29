@@ -6,6 +6,7 @@ from core.security import get_current_user
 from models import db_models
 from models.env_models import EnvironmentCreate, EnvironmentUpdate
 from core.logger import get_logger
+from core.frodo.save_connection import save_connection
 
 logger = get_logger(__name__)
 
@@ -122,3 +123,32 @@ def delete_env(
     session.commit()
     logger.info(f"Environment '{env_name}' deleted for user_id={current_user.id}")
     return {"detail": "Environment deleted successfully."}
+
+@router.post("/{env_name}/save-connection")
+def save_env_connection(
+    env_name: str,
+    session: Session = Depends(db.get_session),
+    current_user: db_models.UserProfile = Depends(get_current_user)
+):
+    """
+    Save Frodo connection for the given environment.
+    """
+    env = session.exec(
+        select(db_models.Environment).where(
+            (db_models.Environment.user_profile_id == current_user.id) &
+            (db_models.Environment.name == env_name)
+        )
+    ).first()
+    if not env:
+        raise HTTPException(status_code=404, detail="Environment not found.")
+
+    save_connection(
+        frodo_path=env.frodo,
+        platform_url=env.platformUrl,
+        service_account_id=env.serviceAccountID,
+        service_account_jwk=env.serviceAccountJWK,
+        proxy_url=env.proxy
+    )
+
+    logger.info(f"Frodo connection saved for environment '{env_name}' and user_id={current_user.id}")
+    return {"detail": f"Connection saved for environment '{env_name}'"}
