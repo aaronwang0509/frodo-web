@@ -26,6 +26,7 @@ class UserProfile(SQLModel, table=True):
 
     user: Optional[IdentityUser] = Relationship(back_populates="profile")
     environments: List["Environment"] = Relationship(back_populates="user_profile")
+    esv_variables: List["EsvVariable"] = Relationship(back_populates="user_profile")
 
 # class LDAPConnection(SQLModel, table=True):
 #     id: Optional[int] = Field(default=None, primary_key=True)
@@ -53,3 +54,31 @@ class Environment(SQLModel, table=True):
 
     user_profile_id: int = Field(foreign_key="userprofile.id")
     user_profile: Optional[UserProfile] = Relationship(back_populates="environments")
+
+    esv_variable_values: List["EsvVariableValue"] = Relationship(back_populates="environment")
+
+class EsvVariable(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(index=True)
+    description: Optional[str] = None
+    expressionType: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    user_profile_id: int = Field(foreign_key="userprofile.id")
+    user_profile: Optional[UserProfile] = Relationship(back_populates="esv_variables")
+
+    values: List["EsvVariableValue"] = Relationship(back_populates="variable")
+
+    __table_args__ = (UniqueConstraint("name", "user_profile_id"),)
+
+class EsvVariableValue(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    variable_id: int = Field(foreign_key="esvvariable.id")
+    environment_id: int = Field(foreign_key="environment.id")
+    environment: Optional[Environment] = Relationship(back_populates="esv_variable_values")
+    value: str
+
+    variable: Optional[EsvVariable] = Relationship(back_populates="values")
+
+    __table_args__ = (UniqueConstraint("variable_id", "environment_id"),)

@@ -44,3 +44,8 @@ def write_tempfile(data: dict, suffix: str = ".tmp") -> str:
     json.dump(data, temp_file)
     temp_file.close()
     return temp_file.name
+
+def load_json(path: str):
+    """Load JSON data from file."""
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
