@@ -1,7 +1,7 @@
 import os
 
 from core.logger import get_logger
-from core.frodo.utils import run_frodo_command, write_tempfile
+from core.frodo.utils import run_command, write_tempfile
 
 logger = get_logger("__name__")
 
@@ -37,7 +37,7 @@ def save_connection(
     logger.info(f"Running Frodo save connection: {command}")
 
     # Run the Frodo command
-    run_frodo_command(command, process_env=frodo_env)
+    run_command(command, process_env=frodo_env)
 
     logger.info("Frodo connection configuration saved successfully.")
 

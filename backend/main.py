@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi import HTTPException
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import FileResponse
-from api import auth, business, admin, env, token
+from api import auth, business, admin, env, token, paic
 from core.init import run_all
 from core.settings import settings
 from core.logger import request_id_ctx_var
@@ -24,11 +24,12 @@ run_all()
 app = FastAPI()
 
 # Mount routers first
-app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
+app.include_router(auth.router, prefix="/auth", tags=["Authentication APIs"])
 # app.include_router(business.router, prefix="/api", tags=["Business APIs"])
 app.include_router(admin.router, prefix="/admin", tags=["Admin APIs"])
 app.include_router(env.router, prefix="/env", tags=["Environment APIs"])
-app.include_router(token.router, prefix="/token", tags=["Token"])
+app.include_router(token.router, prefix="/token", tags=["Token APIs"])
+app.include_router(paic.router, prefix="/paic", tags=["PAIC APIs"])
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):

@@ -6,9 +6,9 @@ from core.logger import get_logger
 
 logger = get_logger("__name__")
 
-def run_frodo_command(command: str, cwd: str = ".", process_env: dict = None) -> str:
+def run_command(command: str, cwd: str = ".", process_env: dict = None) -> str:
     """
-    Run a Frodo CLI command and return its stdout output.
+    Run a shell command and return its stdout output.
     Logs stdout, stderr, and errors with your centralized logger.
     """
     try:
@@ -23,15 +23,15 @@ def run_frodo_command(command: str, cwd: str = ".", process_env: dict = None) ->
         )
 
         if result.stdout.strip():
-            logger.info(f"Frodo command output:\n{result.stdout.strip()}")
+            logger.info(f"Command output:\n{result.stdout.strip()}")
         if result.stderr.strip():
-            logger.warning(f"Frodo command stderr:\n{result.stderr.strip()}")
+            logger.warning(f"Command stderr:\n{result.stderr.strip()}")
 
-        return result.stdout.strip()
+        return result.stdout.strip(), result.stderr.strip()
 
     except subprocess.CalledProcessError as e:
         logger.error(
-            f"Frodo command failed: {command} (exit code {e.returncode})",
+            f"Command failed: {command} (exit code {e.returncode})",
             extra={"stderr": e.stderr.strip(), "stdout": e.stdout.strip()}
         )
         raise
