@@ -12,7 +12,6 @@ class EnvironmentCreate(SQLModel):
     scope: str
     proxy: Optional[str] = None
 
-
 class EnvironmentUpdate(SQLModel):
     frodo: Optional[str] = None
     platformUrl: Optional[str] = None

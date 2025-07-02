@@ -1,102 +1,146 @@
-# api/esv.py
-
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException, Depends, Body
 from sqlmodel import Session, select
-
+from typing import List
 from core import db
 from core.security import get_current_user
 from core.logger import get_logger
 from api.settings import settings
 from models import db_models
-from core.frodo.sync_esv import pull_variables_from_local
+from models.esv_models import EsvVariableResponse, EsvVariableCreate, EsvVariableUpdate, EsvVariableDelete
+from core.services.esv_sync_service import (
+    get_variables_in_db,
+    create_variables_in_db,
+    update_variables_in_db,
+    delete_variables_in_db,
+    diff_repo_vs_db_all_envs,
+    diff_db_vs_repo_all_envs
+)
 
 logger = get_logger(__name__)
 
 router = APIRouter()
 
-@router.post("/variable/{env_name}/pull", status_code=200)
-def pull_esv_variables(
-    env_name: str,
+@router.get("/variable", status_code=200, response_model=List[EsvVariableResponse])
+def get_esv_variables(
     session: Session = Depends(db.get_session),
     current_user: db_models.UserProfile = Depends(get_current_user)
 ):
     """
-    Pull ESV variables from local config repo and save/update them to DB.
+    Get all ESV variables for the current user, grouped with values per environment.
+    Uses the get_variables_in_db service.
     """
+    logger.info(f"Fetching ESV variables for user_id={current_user.id}")
 
-    # Find environment for this user
-    env = session.exec(
-        select(db_models.Environment).where(
-            (db_models.Environment.user_profile_id == current_user.id) &
-            (db_models.Environment.name == env_name)
-        )
-    ).first()
-
-    if not env:
-        raise HTTPException(status_code=404, detail="Environment not found.")
-
-    logger.info(f"Starting ESV pull for env='{env_name}' user_id={current_user.id}")
-
-    # Use your helper to get the data
-    esv_variable_data = pull_variables_from_local(
-        paic_config_path=settings.PAIC_CONFIG_PATH,
-        env_name=env_name
+    response = get_variables_in_db(
+        session=session,
+        current_user=current_user
     )
 
-    logger.info(f"Pulled ESV variable data: {list(esv_variable_data.keys())}")
+    logger.info(f"Found {len(response)} ESV variables for user_id={current_user.id}")
+    return response
 
-    for var_name, var_content in esv_variable_data.items():
-        # Get or create EsvVariable for this user
-        variable = session.exec(
-            select(db_models.EsvVariable).where(
-                (db_models.EsvVariable.name == var_name) &
-                (db_models.EsvVariable.user_profile_id == current_user.id)
-            )
-        ).first()
+@router.post("/variable", status_code=200, response_model=List[EsvVariableResponse])
+def create_esv_variables(
+    payload: List[EsvVariableCreate],
+    session: Session = Depends(db.get_session),
+    current_user: db_models.UserProfile = Depends(get_current_user)
+):
+    """
+    Create ESV variables (and their values) for the current user.
+    Uses the new create_variables_in_db service.
+    """
+    logger.info(f"Creating ESV variables for user_id={current_user.id}")
 
-        if not variable:
-            variable = db_models.EsvVariable(
-                name=var_name,
-                description=var_content.get("description"),
-                expressionType=var_content.get("expressionType"),
-                user_profile_id=current_user.id
-            )
-            session.add(variable)
-            logger.info(f"Created new EsvVariable: {var_name}")
-        else:
-            # Update description & expressionType if changed
-            variable.description = var_content.get("description")
-            variable.expressionType = var_content.get("expressionType")
-            logger.info(f"Updated EsvVariable: {var_name}")
+    created_vars = create_variables_in_db(
+        payload=payload,
+        session=session,
+        current_user=current_user
+    )
 
-        session.commit()
-        session.refresh(variable)
+    logger.info(f"Created {len(created_vars)} ESV variables for user_id={current_user.id}")
 
-        # Get or create EsvVariableValue for this env
-        value_record = session.exec(
-            select(db_models.EsvVariableValue).where(
-                (db_models.EsvVariableValue.variable_id == variable.id) &
-                (db_models.EsvVariableValue.environment_id == env.id)
-            )
-        ).first()
+    return created_vars
 
-        if not value_record:
-            value_record = db_models.EsvVariableValue(
-                variable_id=variable.id,
-                environment_id=env.id,
-                value=var_content.get("value")
-            )
-            session.add(value_record)
-            logger.info(f"Created new EsvVariableValue for {var_name}")
-        else:
-            value_record.value = var_content.get("value")
-            logger.info(f"Updated EsvVariableValue for {var_name}")
+@router.patch("/variable", status_code=200, response_model=List[EsvVariableResponse])
+def update_esv_variables(
+    payload: List[EsvVariableUpdate],
+    session: Session = Depends(db.get_session),
+    current_user: db_models.UserProfile = Depends(get_current_user)
+):
+    """
+    Update ESV variables and their values for the current user.
+    """
+    logger.info(f"Updating ESV variables for user_id={current_user.id}")
 
-        session.commit()
+    updated_vars = update_variables_in_db(
+        payload=payload,
+        session=session,
+        current_user=current_user
+    )
 
-    logger.info(f"Completed ESV pull for env='{env_name}' user_id={current_user.id}")
+    logger.info(f"Updated {len(updated_vars)} ESV variables for user_id={current_user.id}")
 
-    return {
-        "detail": f"ESV variables pulled and saved for environment '{env_name}'.",
-        "variables_count": len(esv_variable_data)
-    }
+    return updated_vars
+
+@router.delete("/variable", status_code=200, response_model=List[EsvVariableResponse])
+def delete_esv_variables(
+    payload: List[EsvVariableDelete],
+    session: Session = Depends(db.get_session),
+    current_user: db_models.UserProfile = Depends(get_current_user)
+):
+    """
+    Delete ESV variables (and/or their specific values) for the current user.
+    - If 'values' is provided, only those env values are deleted.
+    - If no values remain, the variable is deleted entirely.
+    """
+    logger.info(f"Deleting ESV variables for user_id={current_user.id}")
+
+    deleted_vars = delete_variables_in_db(
+        payload=payload,
+        session=session,
+        current_user=current_user
+    )
+
+    logger.info(f"Deleted {len(deleted_vars)} ESV variables/values for user_id={current_user.id}")
+
+    return deleted_vars
+
+@router.get("/variable/preview-pull", status_code=200)
+def preview_pull_esv_variables(
+    session: Session = Depends(db.get_session),
+    current_user: db_models.UserProfile = Depends(get_current_user)
+):
+    """
+    Preview what will change in the DB if you pull variables from the local repo.
+    Shows create/update/delete actions.
+    """
+    logger.info(f"[PREVIEW] Running pull diff for user_id={current_user.id}")
+
+    diff_result = diff_repo_vs_db_all_envs(
+        paic_config_path=settings.PAIC_CONFIG_PATH,
+        session=session,
+        current_user=current_user
+    )
+
+    logger.info(f"[PREVIEW] Pull diff result: {diff_result}")
+    return diff_result
+
+@router.get("/variable/preview-push", status_code=200)
+def preview_push_esv_variables(
+    session: Session = Depends(db.get_session),
+    current_user: db_models.UserProfile = Depends(get_current_user)
+):
+    """
+    Preview what will change in the repo if you push variables from the DB.
+    Shows create/update/delete actions.
+    """
+    logger.info(f"[PREVIEW] Running push diff for user_id={current_user.id}")
+
+    diff_result = diff_db_vs_repo_all_envs(
+        paic_config_path=settings.PAIC_CONFIG_PATH,
+        session=session,
+        current_user=current_user
+    )
+
+    logger.info(f"[PREVIEW] Push diff result: {diff_result}")
+    return diff_result
