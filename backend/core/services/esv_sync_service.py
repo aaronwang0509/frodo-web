@@ -2,7 +2,7 @@
 from sqlmodel import Session, select
 from typing import List, Dict, Any
 from core.logger import get_logger
-from core.frodo.sync_esv import pull_variables_from_local
+from core.frodo.sync_esv import pull_variables_for_env
 from models import db_models
 from models.esv_models import EsvVariableResponse, EsvVariableCreate, EsvVariableUpdate, EsvVariableDelete
 
@@ -30,7 +30,6 @@ def build_esv_variable_response(
     )
 
 def diff_repo_vs_db_all_envs(
-    paic_config_path: str,
     session: Session,
     current_user: db_models.UserProfile
 ) -> Dict[str, Any]:
@@ -52,15 +51,15 @@ def diff_repo_vs_db_all_envs(
     # Build repo_lookup
     repo_lookup = {}
     for env in envs:
-        repo_data = pull_variables_from_local(paic_config_path, env.name)
+        repo_data = pull_variables_from_env(env.name)
         for name, var in repo_data.items():
             if name not in repo_lookup:
                 repo_lookup[name] = {
-                    "description": var.get("description"),
-                    "expressionType": var.get("expressionType"),
+                    "description": var.description,
+                    "expressionType": var.expressionType,
                     "values": {}
                 }
-            repo_lookup[name]["values"][env.name] = var.get("value")
+            repo_lookup[name]["values"][env.name] = var.value
 
     # Build db_lookup
     db_vars = session.exec(
@@ -181,7 +180,6 @@ def diff_repo_vs_db_all_envs(
     }
 
 def diff_db_vs_repo_all_envs(
-    paic_config_path: str,
     session: Session,
     current_user: db_models.UserProfile
 ) -> Dict[str, Any]:
@@ -221,15 +219,15 @@ def diff_db_vs_repo_all_envs(
     # Build repo lookup
     repo_lookup = {}
     for env in envs:
-        repo_data = pull_variables_from_local(paic_config_path, env.name)
+        repo_data = pull_variables_from_env(env.name)
         for name, var in repo_data.items():
             if name not in repo_lookup:
                 repo_lookup[name] = {
-                    "description": var.get("description"),
-                    "expressionType": var.get("expressionType"),
+                    "description": var.description,
+                    "expressionType": var.expressionType,
                     "values": {}
                 }
-            repo_lookup[name]["values"][env.name] = var.get("value")
+            repo_lookup[name]["values"][env.name] = var.value
 
     create_list = []
     update_list = []
@@ -552,3 +550,78 @@ def delete_variables_in_db(
     session.commit()
     logger.info(f"Committed ESV deletes for user_id={current_user.id}")
     return response
+
+def apply_pull_from_repo(
+    session: Session,
+    current_user: db_models.UserProfile
+) -> Dict[str, Any]:
+    """
+    Sync DB to match local repo for all envs.
+    1. Diff repo vs DB
+    2. Apply create, update, delete actions
+    3. Return summary
+    """
+    logger.info(f"Starting apply_pull_from_repo for user_id={current_user.id}")
+
+    diff_result = diff_repo_vs_db_all_envs(session, current_user)
+    logger.info(f"Diff result: {diff_result}")
+
+    created, updated, deleted = [], [], []
+
+    # ---- CREATE ----
+    create_payload = [
+        EsvVariableCreate(**item) for item in diff_result.get("create", [])
+    ]
+    if create_payload:
+        created = create_variables_in_db(create_payload, session, current_user)
+
+    # ---- UPDATE ----
+    update_payload = []
+    for item in diff_result.get("update", []):
+        # Use only the 'new' values for fields with old/new structure
+        description = (
+            item["description"]["new"]
+            if isinstance(item.get("description"), dict)
+            else item.get("description")
+        )
+
+        # expressionType never has diff, but safe to check
+        expressionType = (
+            item["expressionType"]["new"]
+            if isinstance(item.get("expressionType"), dict)
+            else item.get("expressionType")
+        )
+
+        # Build values with only new values if they have old/new pairs
+        cleaned_values = {}
+        for env_name, val in item.get("values", {}).items():
+            if isinstance(val, dict):
+                cleaned_values[env_name] = val["new"]
+            else:
+                cleaned_values[env_name] = val
+
+        update_payload.append(EsvVariableUpdate(
+            name=item["name"],
+            description=description,
+            expressionType=expressionType,
+            values=cleaned_values or None
+        ))
+
+    if update_payload:
+        updated = update_variables_in_db(update_payload, session, current_user)
+
+    # ---- DELETE ----
+    delete_payload = [
+        EsvVariableDelete(**item) for item in diff_result.get("delete", [])
+    ]
+    if delete_payload:
+        deleted = delete_variables_in_db(delete_payload, session, current_user)
+
+    result = {
+        "created": [v.model_dump() for v in created],
+        "updated": [v.model_dump() for v in updated],
+        "deleted": [v.model_dump() for v in deleted],
+    }
+
+    logger.info(f"apply_pull_from_repo done for user_id={current_user.id}")
+    return result

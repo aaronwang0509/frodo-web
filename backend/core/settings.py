@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_MINUTES: int
     REFRESH_TOKEN_SECRET_KEY: str
 
+    # PAIC repository
+    PAIC_CONFIG_PATH: str
+    PAIC_CONFIG_BRANCH_NAME: str
+
     class Config:
         env_file = Path(__file__).resolve().parent.parent / ".env"
         case_sensitive = True

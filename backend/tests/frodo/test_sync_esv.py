@@ -2,8 +2,7 @@
 import json
 from pathlib import Path
 
-from core.frodo.sync_esv import pull_variables_from_local
-from tests.settings import settings
+from core.frodo.sync_esv import pull_variables_from_env
 
 # Load envs.json
 CONFIG_PATH = Path(__file__).parent.parent / "envs.json"
@@ -14,8 +13,7 @@ with open(CONFIG_PATH) as f:
 def test_sync_esv_pull():
     env = TEST_ENVS["SBX"]
 
-    result = pull_variables_from_local(
-        paic_config_path=settings.PAIC_CONFIG_PATH,
+    result = pull_variables_from_env(
         env_name="SBX",
     )
 

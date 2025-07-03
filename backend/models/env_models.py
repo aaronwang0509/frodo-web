@@ -1,8 +1,8 @@
 # models/env_models.py
 from typing import Optional
-from sqlmodel import SQLModel
+from pydantic import BaseModel
 
-class EnvironmentCreate(SQLModel):
+class EnvironmentCreate(BaseModel):
     name: str
     frodo: Optional[str] = None
     platformUrl: str
@@ -12,7 +12,7 @@ class EnvironmentCreate(SQLModel):
     scope: str
     proxy: Optional[str] = None
 
-class EnvironmentUpdate(SQLModel):
+class EnvironmentUpdate(BaseModel):
     frodo: Optional[str] = None
     platformUrl: Optional[str] = None
     serviceAccountID: Optional[str] = None

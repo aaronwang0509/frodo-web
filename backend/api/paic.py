@@ -6,7 +6,6 @@ from core import db
 from core.security import get_current_user
 from core.logger import get_logger
 from core.frodo.update_and_push import update_and_push
-from api.settings import settings
 from models import db_models
 
 logger = get_logger(__name__)
@@ -36,12 +35,10 @@ def run_update_and_push(
     logger.info(f"Starting update_and_push for env='{env_name}' user_id={current_user.id}")
 
     result = update_and_push(
-        paic_config_path=settings.PAIC_CONFIG_PATH,
         env_name=env.name,
-        branch_name=settings.PAIC_CONFIG_BRANCH_NAME,
         frodo_path=env.frodo,
-        host_url=env.platformUrl,
-        proxy_url=env.proxy,
+        platform_url=env.platformUrl,
+        proxy=env.proxy,
         git_user_name=current_user.username,
         git_user_email=current_user.email
     )

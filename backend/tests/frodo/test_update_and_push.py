@@ -3,7 +3,6 @@ import json
 from pathlib import Path
 
 from core.frodo.update_and_push import update_and_push
-from tests.settings import settings
 
 # Load envs.json
 CONFIG_PATH = Path(__file__).parent.parent / "envs.json"
@@ -15,8 +14,6 @@ def test_update_and_push():
     env = TEST_ENVS["SBX"]
 
     update_and_push(
-        paic_config_path=settings.PAIC_CONFIG_PATH,
-        branch_name=settings.PAIC_CONFIG_BRANCH_NAME,
         frodo_path=env["frodo"],
         host_url=env["platformUrl"],
         env_name="SBX",

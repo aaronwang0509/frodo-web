@@ -4,7 +4,6 @@ from typing import List
 from core import db
 from core.security import get_current_user
 from core.logger import get_logger
-from api.settings import settings
 from models import db_models
 from models.esv_models import EsvVariableResponse, EsvVariableCreate, EsvVariableUpdate, EsvVariableDelete
 from core.services.esv_sync_service import (
@@ -13,7 +12,8 @@ from core.services.esv_sync_service import (
     update_variables_in_db,
     delete_variables_in_db,
     diff_repo_vs_db_all_envs,
-    diff_db_vs_repo_all_envs
+    diff_db_vs_repo_all_envs,
+    apply_pull_from_repo
 )
 
 logger = get_logger(__name__)
@@ -117,7 +117,6 @@ def preview_pull_esv_variables(
     logger.info(f"[PREVIEW] Running pull diff for user_id={current_user.id}")
 
     diff_result = diff_repo_vs_db_all_envs(
-        paic_config_path=settings.PAIC_CONFIG_PATH,
         session=session,
         current_user=current_user
     )
@@ -137,10 +136,20 @@ def preview_push_esv_variables(
     logger.info(f"[PREVIEW] Running push diff for user_id={current_user.id}")
 
     diff_result = diff_db_vs_repo_all_envs(
-        paic_config_path=settings.PAIC_CONFIG_PATH,
         session=session,
         current_user=current_user
     )
 
     logger.info(f"[PREVIEW] Push diff result: {diff_result}")
     return diff_result
+
+@router.post("/variable/pull", status_code=200)
+def pull_esv_variables(
+    session: Session = Depends(db.get_session),
+    current_user: db_models.UserProfile = Depends(get_current_user)
+):
+    """
+    Actually perform the pull sync, applying create/update/delete actions.
+    """
+    logger.info(f"[PULL] Running pull sync for user_id={current_user.id}")
+    return apply_pull_from_repo(session, current_user)

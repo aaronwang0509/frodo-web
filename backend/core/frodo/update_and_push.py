@@ -3,8 +3,9 @@ import os
 import datetime
 import shutil
 
-from core.frodo.utils import run_command
 from core.logger import get_logger
+from core.settings import settings
+from core.frodo.utils import run_command
 
 logger = get_logger("__name__")
 
@@ -19,14 +20,14 @@ def clean_old_configs(configs_dir: str):
             logger.info(f"Deleted: {entry_path}")
 
 def update_and_push(
-    paic_config_path: str,
     env_name: str,
-    branch_name: str,
     frodo_path: str,
-    host_url: str,
-    proxy_url: str | None,
+    platform_url: str,
+    proxy: str | None,
     git_user_name: str,
-    git_user_email: str
+    git_user_email: str,
+    paic_config_path: str = settings.PAIC_CONFIG_PATH,
+    branch_name: str = settings.PAIC_CONFIG_BRANCH_NAME,
 ) -> dict:
     """
     Run Frodo config export for the given environment,
@@ -74,15 +75,15 @@ def update_and_push(
 
     # Build Frodo command environment
     frodo_env = os.environ.copy()
-    if proxy_url:
-        frodo_env["HTTPS_PROXY"] = proxy_url
-        logger.info(f"Using proxy: {proxy_url}")
+    if proxy:
+        frodo_env["HTTPS_PROXY"] = proxy
+        logger.info(f"Using proxy: {proxy}")
 
     # Run Frodo config export
     logger.info("Running Frodo config export...")
     try:
         export_stdout, export_stderr = run_command(
-            f"{frodo_path} config export -sxoAND {configs_dir} {host_url}",
+            f"{frodo_path} config export -sxoAND {configs_dir} {platform_url}",
             cwd=paic_config_root,
             process_env=frodo_env
         )

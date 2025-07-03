@@ -28,18 +28,6 @@ class UserProfile(SQLModel, table=True):
     environments: List["Environment"] = Relationship(back_populates="user_profile")
     esv_variables: List["EsvVariable"] = Relationship(back_populates="user_profile")
 
-# class LDAPConnection(SQLModel, table=True):
-#     id: Optional[int] = Field(default=None, primary_key=True)
-#     user_id: int = Field(foreign_key="identityuser.id")
-#     name: str
-#     hostname: str
-#     port: int
-#     bind_dn: str
-#     encrypted_password: str
-#     use_ssl: bool
-
-#     user: Optional[IdentityUser] = Relationship(back_populates="connections")
-
 class Environment(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = Field(index=True)

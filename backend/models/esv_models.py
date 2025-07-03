@@ -25,3 +25,8 @@ class EsvVariableDelete(BaseModel):
     description: Optional[str] = None
     expressionType: Optional[str] = None
     values: Optional[Dict[str, str]] = None
+
+class EsvVariablePerEnv(BaseModel):
+    description: Optional[str] = None
+    expressionType: Optional[str] = None
+    value: Optional[str] = None
