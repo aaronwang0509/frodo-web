@@ -9,11 +9,11 @@ from core.frodo.utils import run_command, write_tempfile, load_json
 
 logger = get_logger("__name__")
 
-def pull_variables_for_env(env_name: str) -> Dict[str, EsvVariablePerEnv]:
+def pull_variables_from_source(env_name: str) -> Dict[str, EsvVariablePerEnv]:
     """Retrieve ESV variables for the given env from the authoritative source."""
     return pull_variables_from_local(env_name)
 
-def add_variables_for_env(
+def add_variables_to_source(
     env_name: str,
     env_data: Dict,
     variables: Dict[str, EsvVariablePerEnv],
@@ -22,7 +22,7 @@ def add_variables_for_env(
     logger.info(f"Adding variables for env: {env_name}")
     return import_variables_to_cloud(env_name, env_data, variables)
 
-def update_variables_for_env(
+def update_variables_to_source(
     env_name: str,
     env_data: Dict,
     variables: Dict[str, EsvVariablePerEnv],
@@ -31,7 +31,7 @@ def update_variables_for_env(
     logger.info(f"Updating variables for env: {env_name}")
     return import_variables_to_cloud(env_name, env_data, variables)
 
-def delete_variables_for_env(
+def delete_variables_to_source(
     env_name: str,
     env_data: Dict,
     variables: Dict[str, EsvVariablePerEnv],

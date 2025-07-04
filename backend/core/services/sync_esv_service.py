@@ -1,10 +1,21 @@
-# core/services/esv_sync_service.py
+# core/services/sync_esv_service.py
 from sqlmodel import Session, select
 from typing import List, Dict, Any
 from core.logger import get_logger
-from core.frodo.sync_esv import pull_variables_for_env
 from models import db_models
-from models.esv_models import EsvVariableResponse, EsvVariableCreate, EsvVariableUpdate, EsvVariableDelete
+from models.esv_models import (
+    EsvVariableResponse,
+    EsvVariableCreate,
+    EsvVariableUpdate,
+    EsvVariableDelete,
+    EsvVariablePerEnv
+)
+from core.frodo.sync_esv import (
+    pull_variables_from_source,
+    add_variables_to_source,
+    update_variables_to_source,
+    delete_variables_to_source
+    )
 
 logger = get_logger(__name__)
 
@@ -29,12 +40,12 @@ def build_esv_variable_response(
         values=values_lookup
     )
 
-def diff_repo_vs_db_all_envs(
+def diff_source_vs_db_all_envs(
     session: Session,
     current_user: db_models.UserProfile
 ) -> Dict[str, Any]:
     """
-    Diff all envs in local repo vs DB for the user.
+    Diff all envs in local source vs DB for the user.
     Returns dict with 'create', 'update', 'delete' lists.
     """
 
@@ -48,18 +59,18 @@ def diff_repo_vs_db_all_envs(
     if not envs:
         raise ValueError("No environments found for current user.")
 
-    # Build repo_lookup
-    repo_lookup = {}
+    # Build source_lookup
+    source_lookup = {}
     for env in envs:
-        repo_data = pull_variables_from_env(env.name)
-        for name, var in repo_data.items():
-            if name not in repo_lookup:
-                repo_lookup[name] = {
+        source_data = pull_variables_from_source(env.name)
+        for name, var in source_data.items():
+            if name not in source_lookup:
+                source_lookup[name] = {
                     "description": var.description,
                     "expressionType": var.expressionType,
                     "values": {}
                 }
-            repo_lookup[name]["values"][env.name] = var.value
+            source_lookup[name]["values"][env.name] = var.value
 
     # Build db_lookup
     db_vars = session.exec(
@@ -74,31 +85,31 @@ def diff_repo_vs_db_all_envs(
     update_list = []
     delete_list = []
 
-    # Compare repo → DB
-    for name, repo_var in repo_lookup.items():
+    # Compare source → DB
+    for name, source_var in source_lookup.items():
         if name not in db_lookup:
             # Variable does not exist in DB → create
             create_list.append({
                 "name": name,
-                "description": repo_var["description"],
-                "expressionType": repo_var["expressionType"],
-                "values": repo_var["values"]
+                "description": source_var["description"],
+                "expressionType": source_var["expressionType"],
+                "values": source_var["values"]
             })
         else:
             db_var = db_lookup[name]
             diff_description = None
             diff_expressionType = None
 
-            if db_var.description != repo_var["description"]:
-                diff_description = {"old": db_var.description, "new": repo_var["description"]}
+            if db_var.description != source_var["description"]:
+                diff_description = {"old": db_var.description, "new": source_var["description"]}
 
-            if db_var.expressionType != repo_var["expressionType"]:
-                diff_expressionType = {"old": db_var.expressionType, "new": repo_var["expressionType"]}
+            if db_var.expressionType != source_var["expressionType"]:
+                diff_expressionType = {"old": db_var.expressionType, "new": source_var["expressionType"]}
 
             changed_values = {}
             partial_create_values = {}
 
-            for env_name, repo_val in repo_var["values"].items():
+            for env_name, source_val in source_var["values"].items():
                 env_obj = next((e for e in envs if e.name == env_name), None)
                 if not env_obj:
                     continue
@@ -109,45 +120,45 @@ def diff_repo_vs_db_all_envs(
                 )
                 db_val_value = db_val.value if db_val else None
 
-                if db_val_value is None and repo_val is not None:
+                if db_val_value is None and source_val is not None:
                     # New env value that didn't exist in DB → partial create
-                    partial_create_values[env_name] = repo_val
-                elif db_val_value != repo_val:
+                    partial_create_values[env_name] = source_val
+                elif db_val_value != source_val:
                     # Value exists but changed → update
-                    changed_values[env_name] = {"old": db_val_value, "new": repo_val}
+                    changed_values[env_name] = {"old": db_val_value, "new": source_val}
 
             if diff_description or diff_expressionType or changed_values:
                 if not changed_values:
                     # Include all unchanged env values
                     unchanged_values = {
-                        env_name: repo_var["values"].get(env_name)
-                        for env_name in repo_var["values"].keys()
+                        env_name: source_var["values"].get(env_name)
+                        for env_name in source_var["values"].keys()
                     }
                     update_list.append({
                         "name": name,
-                        "description": diff_description if diff_description else repo_var["description"],
-                        "expressionType": diff_expressionType if diff_expressionType else repo_var["expressionType"],
+                        "description": diff_description if diff_description else source_var["description"],
+                        "expressionType": diff_expressionType if diff_expressionType else source_var["expressionType"],
                         "values": unchanged_values
                     })
                 else:
                     update_list.append({
                         "name": name,
-                        "description": diff_description if diff_description else repo_var["description"],
-                        "expressionType": diff_expressionType if diff_expressionType else repo_var["expressionType"],
+                        "description": diff_description if diff_description else source_var["description"],
+                        "expressionType": diff_expressionType if diff_expressionType else source_var["expressionType"],
                         "values": changed_values
                     })
 
             if partial_create_values:
                 create_list.append({
                     "name": name,
-                    "description": repo_var["description"],
-                    "expressionType": repo_var["expressionType"],
+                    "description": source_var["description"],
+                    "expressionType": source_var["expressionType"],
                     "values": partial_create_values
                 })
 
-    # Vars in DB but not in repo → delete (including partial deletes)
+    # Vars in DB but not in source → delete (including partial deletes)
     for name, db_var in db_lookup.items():
-        if name not in repo_lookup:
+        if name not in source_lookup:
             delete_list.append({
                 "name": db_var.name,
                 "description": db_var.description,
@@ -158,11 +169,11 @@ def diff_repo_vs_db_all_envs(
                 }
             })
         else:
-            repo_envs = repo_lookup[name]["values"].keys()
+            source_envs = source_lookup[name]["values"].keys()
             partial_values = {}
             for db_val in db_var.values:
                 env_obj = next((e for e in envs if e.id == db_val.environment_id), None)
-                if env_obj and env_obj.name not in repo_envs:
+                if env_obj and env_obj.name not in source_envs:
                     partial_values[env_obj.name] = db_val.value
 
             if partial_values:
@@ -179,12 +190,12 @@ def diff_repo_vs_db_all_envs(
         "delete": delete_list
     }
 
-def diff_db_vs_repo_all_envs(
+def diff_db_vs_source_all_envs(
     session: Session,
     current_user: db_models.UserProfile
 ) -> Dict[str, Any]:
     """
-    Diff DB (source of truth) vs local repo for all envs.
+    Diff DB (source of truth) vs local source for all envs.
     Returns dict with 'create', 'update', 'delete' lists.
     """
 
@@ -216,26 +227,26 @@ def diff_db_vs_repo_all_envs(
             if env_name:
                 db_lookup[var.name]["values"][env_name] = val.value
 
-    # Build repo lookup
-    repo_lookup = {}
+    # Build source lookup
+    source_lookup = {}
     for env in envs:
-        repo_data = pull_variables_from_env(env.name)
-        for name, var in repo_data.items():
-            if name not in repo_lookup:
-                repo_lookup[name] = {
+        source_data = pull_variables_from_source(env.name)
+        for name, var in source_data.items():
+            if name not in source_lookup:
+                source_lookup[name] = {
                     "description": var.description,
                     "expressionType": var.expressionType,
                     "values": {}
                 }
-            repo_lookup[name]["values"][env.name] = var.value
+            source_lookup[name]["values"][env.name] = var.value
 
     create_list = []
     update_list = []
     delete_list = []
 
-    # DB → Repo
+    # DB → source
     for name, db_var in db_lookup.items():
-        if name not in repo_lookup:
+        if name not in source_lookup:
             create_list.append({
                 "name": name,
                 "description": db_var["description"],
@@ -243,19 +254,19 @@ def diff_db_vs_repo_all_envs(
                 "values": db_var["values"]
             })
         else:
-            repo_var = repo_lookup[name]
+            source_var = source_lookup[name]
             diff_description = None
             diff_expressionType = None
 
-            if db_var["description"] != repo_var["description"]:
+            if db_var["description"] != source_var["description"]:
                 diff_description = {
-                    "old": repo_var["description"],
+                    "old": source_var["description"],
                     "new": db_var["description"]
                 }
 
-            if db_var["expressionType"] != repo_var["expressionType"]:
+            if db_var["expressionType"] != source_var["expressionType"]:
                 diff_expressionType = {
-                    "old": repo_var["expressionType"],
+                    "old": source_var["expressionType"],
                     "new": db_var["expressionType"]
                 }
 
@@ -263,12 +274,12 @@ def diff_db_vs_repo_all_envs(
             partial_create_values = {}
 
             for env_name, db_val in db_var["values"].items():
-                repo_val = repo_var["values"].get(env_name)
+                source_val = source_var["values"].get(env_name)
 
-                if repo_val is None:
+                if source_val is None:
                     partial_create_values[env_name] = db_val
-                elif repo_val != db_val:
-                    changed_values[env_name] = {"old": repo_val, "new": db_val}
+                elif source_val != db_val:
+                    changed_values[env_name] = {"old": source_val, "new": db_val}
 
             if diff_description or diff_expressionType or changed_values:
                 if not changed_values:
@@ -299,27 +310,27 @@ def diff_db_vs_repo_all_envs(
                     "values": partial_create_values
                 })
 
-    # Vars in repo but not in DB → delete (including partial env deletes)
-    for name, repo_var in repo_lookup.items():
+    # Vars in source but not in DB → delete (including partial env deletes)
+    for name, source_var in source_lookup.items():
         if name not in db_lookup:
             delete_list.append({
                 "name": name,
-                "description": repo_var["description"],
-                "expressionType": repo_var["expressionType"],
-                "values": repo_var["values"]
+                "description": source_var["description"],
+                "expressionType": source_var["expressionType"],
+                "values": source_var["values"]
             })
         else:
             db_envs = db_lookup[name]["values"].keys()
             partial_values = {}
-            for env_name, repo_val in repo_var["values"].items():
+            for env_name, source_val in source_var["values"].items():
                 if env_name not in db_envs:
-                    partial_values[env_name] = repo_val
+                    partial_values[env_name] = source_val
 
             if partial_values:
                 delete_list.append({
                     "name": name,
-                    "description": repo_var["description"],
-                    "expressionType": repo_var["expressionType"],
+                    "description": source_var["description"],
+                    "expressionType": source_var["expressionType"],
                     "values": partial_values
                 })
 
@@ -551,19 +562,19 @@ def delete_variables_in_db(
     logger.info(f"Committed ESV deletes for user_id={current_user.id}")
     return response
 
-def apply_pull_from_repo(
+def apply_pull_from_source(
     session: Session,
     current_user: db_models.UserProfile
 ) -> Dict[str, Any]:
     """
-    Sync DB to match local repo for all envs.
-    1. Diff repo vs DB
+    Sync DB to match local source for all envs.
+    1. Diff source vs DB
     2. Apply create, update, delete actions
     3. Return summary
     """
-    logger.info(f"Starting apply_pull_from_repo for user_id={current_user.id}")
+    logger.info(f"Starting apply_pull_from_source for user_id={current_user.id}")
 
-    diff_result = diff_repo_vs_db_all_envs(session, current_user)
+    diff_result = diff_source_vs_db_all_envs(session, current_user)
     logger.info(f"Diff result: {diff_result}")
 
     created, updated, deleted = [], [], []
@@ -623,5 +634,90 @@ def apply_pull_from_repo(
         "deleted": [v.model_dump() for v in deleted],
     }
 
-    logger.info(f"apply_pull_from_repo done for user_id={current_user.id}")
+    logger.info(f"apply_pull_from_source done for user_id={current_user.id}")
+    return result
+
+def apply_push_to_source(
+    env_name: str,
+    session: Session,
+    current_user: db_models.UserProfile
+) -> Dict[str, Any]:
+    """
+    Sync the source (local repo/cloud) to match the DB for the specified env.
+    1. Diff DB vs Source
+    2. Apply create, update, delete actions for the given env
+    3. Return summary of actions
+    """
+    logger.info(f"Starting apply_push_to_source for user_id={current_user.id} for env={env_name}")
+
+    diff_result = diff_db_vs_source_all_envs(session, current_user)
+    logger.info(f"Diff result: {diff_result}")
+
+    env = session.exec(
+        select(db_models.Environment).where(
+            db_models.Environment.name == env_name,
+            db_models.Environment.user_profile_id == current_user.id
+        )
+    ).first()
+
+    if not env:
+        raise ValueError(f"Environment '{env_name}' not found for user.")
+
+    # Build env_data
+    env_data = {
+        "frodo_path": env.frodo,
+        "platform_url": env.platformUrl,
+        "proxy": env.proxy
+    }
+
+    created, updated, deleted = [], [], []
+
+    # ---- CREATE ----
+    create_dict: Dict[str, EsvVariablePerEnv] = {}
+    for item in diff_result.get("create", []):
+        values = item.get("values", {})
+        if env.name in values:
+            create_dict[item["name"]] = EsvVariablePerEnv(
+                description=item.get("description", ""),
+                expressionType=item.get("expressionType", "string"),
+                value=values[env.name]
+            )
+    if create_dict:
+        success = add_variables_to_source(env.name, env_data, create_dict)
+        created.append({"env": env.name, "success": success, "count": len(create_dict)})
+
+    # ---- UPDATE ----
+    update_dict: Dict[str, EsvVariablePerEnv] = {}
+    for item in diff_result.get("update", []):
+        values = item.get("values", {})
+        if env.name in values:
+            update_dict[item["name"]] = EsvVariablePerEnv(
+                description=item.get("description", "") if isinstance(item["description"], str)
+                else item["description"].get("new", ""),
+                expressionType=item.get("expressionType", "string")
+                if isinstance(item["expressionType"], str)
+                else item["expressionType"].get("new", "string"),
+                value=values[env.name]["new"] if isinstance(values[env.name], dict) else values[env.name]
+            )
+    if update_dict:
+        success = update_variables_to_source(env.name, env_data, update_dict)
+        updated.append({"env": env.name, "success": success, "count": len(update_dict)})
+
+    # ---- DELETE ----
+    delete_dict: Dict[str, EsvVariablePerEnv] = {}
+    for item in diff_result.get("delete", []):
+        values = item.get("values", {})
+        if not values or env.name in values:
+            delete_dict[item["name"]] = EsvVariablePerEnv()
+    if delete_dict:
+        success = delete_variables_to_source(env.name, env_data, delete_dict)
+        deleted.append({"env": env.name, "success": success, "count": len(delete_dict)})
+
+    result = {
+        "created": created,
+        "updated": updated,
+        "deleted": deleted
+    }
+
+    logger.info(f"Finished apply_push_to_source for user_id={current_user.id} env={env_name}")
     return result

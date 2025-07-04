@@ -124,7 +124,7 @@ def delete_env(
     logger.info(f"Environment '{env_name}' deleted for user_id={current_user.id}")
     return {"detail": "Environment deleted successfully."}
 
-@router.post("/{env_name}/save-connection")
+@router.post("/save-connection/{env_name}")
 def save_env_connection(
     env_name: str,
     session: Session = Depends(db.get_session),

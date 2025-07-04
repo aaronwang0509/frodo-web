@@ -1,7 +1,6 @@
 # main.py
 import os
 import uuid
-import logging
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.requests import Request
@@ -9,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi import HTTPException
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import FileResponse
-from api import auth, admin, env, token, paic, esv
+from api import auth, admin, env, token, paic, esv, job
 from core.init import run_all
 from core.settings import settings
 from core.logger import request_id_ctx_var
@@ -30,6 +29,7 @@ app.include_router(env.router, prefix="/env", tags=["Environment APIs"])
 app.include_router(token.router, prefix="/token", tags=["Token APIs"])
 app.include_router(paic.router, prefix="/paic", tags=["PAIC APIs"])
 app.include_router(esv.router, prefix="/esv", tags=["ESV APIs"])
+app.include_router(job.router, prefix="/job", tags=["JOB APIs"])
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
