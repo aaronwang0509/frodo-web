@@ -49,19 +49,19 @@ async def add_request_id(request: Request, call_next):
     return response
 
 # Check environment mode
-# if UVICORN_MODE == "production":
-#     # Serve static frontend files in production
-#     app.mount("/static", StaticFiles(directory=FRONTEND_BUILD_DIR + "/static"), name="static")
+if UVICORN_MODE == "production":
+    # Serve static frontend files in production
+    app.mount("/static", StaticFiles(directory=FRONTEND_BUILD_DIR + "/static"), name="static")
 
-#     @app.get("/{full_path:path}")
-#     async def serve_react_app(full_path: str):
-#         return FileResponse(FRONTEND_BUILD_DIR + "/index.html")
-# else:
-#     # Enable CORS in development mode
-#     app.add_middleware(
-#         CORSMiddleware,
-#         allow_origins=[FRONTEND_ORIGIN],
-#         allow_credentials=True,
-#         allow_methods=["*"], 
-#         allow_headers=["*"],
-#     )
+    @app.get("/{full_path:path}")
+    async def serve_react_app(full_path: str):
+        return FileResponse(FRONTEND_BUILD_DIR + "/index.html")
+else:
+    # Enable CORS in development mode
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[FRONTEND_ORIGIN],
+        allow_credentials=True,
+        allow_methods=["*"], 
+        allow_headers=["*"],
+    )
